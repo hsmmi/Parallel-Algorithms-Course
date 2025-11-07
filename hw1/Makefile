@@ -6,9 +6,9 @@ CXXFLAGS = -O3 -funroll-loops -ffast-math -Wall -march=native
 SRC_DIR := src
 BIN_DIR := bin
 RESULTS_DIR := results
+# Program-specific result directories
 GPROF_DIR   := $(RESULTS_DIR)/gprof/$(PROG)
 PERF_DIR    := $(RESULTS_DIR)/perf/$(PROG)
-RUN_DIR     := $(RESULTS_DIR)/run/$(PROG)
 
 # Program name (without .cpp extension)
 PROG ?= matmul_int
@@ -17,28 +17,37 @@ PROG ?= matmul_int
 N ?= 1024
 RUNS ?= 3
 
-# Ensure bin directory exists
+# Problem sizes for the part1 target
+SIZES := 1024 2048 4096
+# Experiment matrix for part1: items are prog,size,runs,tools
+EXPERIMENTS_P1 := \
+	matmul_double,1024,3,all \
+	matmul_int,1024,3,all \
+	matmul_int,2048,3,all \
+	matmul_int,4096,3,all
+
+# List of all source files in src/ and derived program names
+SRC_FILES := $(wildcard $(SRC_DIR)/*.cpp)
+PROGS := $(patsubst $(SRC_DIR)/%.cpp,%,$(SRC_FILES))
+
+# Ensure directories exist
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 $(GPROF_DIR):
 	@mkdir -p $(GPROF_DIR)
 $(PERF_DIR):
 	@mkdir -p $(PERF_DIR)
-$(RUN_DIR):
-	@mkdir -p $(RUN_DIR)
 
 # Derived binary names (per N), now living in bin/
 BIN      := $(BIN_DIR)/$(PROG)_N$(N)
 PROF_BIN := $(BIN_DIR)/$(PROG)_gprof_N$(N)
 
 # Build baseline binary
-$(BIN): $(SRC_DIR)/$(PROG).cpp
-	@mkdir -p $(BIN_DIR)
+$(BIN): $(SRC_DIR)/$(PROG).cpp | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -DN=$(N) -o $@ $<
 
-# Build gprof‑instrumented binary
-$(PROF_BIN): $(SRC_DIR)/$(PROG).cpp
-	@mkdir -p $(BIN_DIR)
+# Build gprof-instrumented binary
+$(PROF_BIN): $(SRC_DIR)/$(PROG).cpp | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -pg -DN=$(N) -o $@ $<
 	
 # Default target: build baseline
@@ -48,34 +57,76 @@ build: $(BIN)
 run: build
 	./$(BIN)
 
-# Run baseline RUNS times and average
-run_avg: build | $(RUN_DIR)
-	@rm -f .times.tmp
+# Generate gprof reports across RUNS runs and compute average execution time
+gprof: $(PROF_BIN) | $(GPROF_DIR)
+	# remove any prior run files and temporary times
+	@rm -f $(GPROF_DIR)/gmon_N$(N)_run*.out $(GPROF_DIR)/gprof_N$(N)_run*.txt .gprof_times.tmp
 	@i=1; while [ $$i -le $(RUNS) ]; do \
-		out=$$(./$(BIN)); \
+		rm -f gmon.out; \
+		out=$$(./$(PROF_BIN)); \
 		echo "$$out"; \
-		echo "$$out" | awk '/Execution time:/ {print $$3}' >> .times.tmp; \
+		echo "$$out" | awk '/Execution time:/ {print $$3}' >> .gprof_times.tmp; \
+		# save the generated gmon.out for this run \
+		mv gmon.out $(GPROF_DIR)/gmon_N$(N)_run$$i.out; \
+		# produce a gprof text report for this run \
+		gprof $(PROF_BIN) $(GPROF_DIR)/gmon_N$(N)_run$$i.out > $(GPROF_DIR)/gprof_N$(N)_run$$i.txt; \
 		i=$$((i+1)); \
 	done; \
-	avg=$$(awk '{s+=$$1} END{printf \"%.6f\", s/NR}' .times.tmp); \
-	{ echo "PROG=$(PROG), N=$(N), RUNS=$(RUNS)"; \
-	  echo "Times:"; cat .times.tmp; \
-	  echo "Average: $$avg seconds"; } > $(RUN_DIR)/avg_N$(N).txt; \
-	echo "run_avg report saved to $(RUN_DIR)/avg_N$(N).txt"
-
-# Generate a gprof report
-gprof: $(PROF_BIN) | $(GPROF_DIR)
-	@rm -f gmon.out
-	./$(PROF_BIN)
-	gprof $(PROF_BIN) gmon.out > $(GPROF_DIR)/gprof_N$(N).txt
-	@echo "gprof report saved to $(GPROF_DIR)/gprof_N$(N).txt"
+	# compute average execution time from collected times \
+	avg=$$(awk '{s+=$$1} END{printf "%.6f", s/NR}' .gprof_times.tmp); \
+	echo "PROG=$(PROG), N=$(N), RUNS=$(RUNS)" > $(GPROF_DIR)/avg_N$(N).txt; \
+	echo "Average execution time: $$avg seconds" >> $(GPROF_DIR)/avg_N$(N).txt
+	@echo "gprof reports saved to $(GPROF_DIR)/gprof_N$(N)_run*.txt and average to $(GPROF_DIR)/avg_N$(N).txt"
 
 # Perf metrics
 perf: $(BIN) | $(PERF_DIR)
-	sudo perf stat -e cycles,instructions,cache-misses,cache-references,L1-dcache-load-misses \
+	sudo perf stat -r $(RUNS) -e cycles,instructions,cache-misses,cache-references,L1-dcache-load-misses \
 		-o $(PERF_DIR)/perf_N$(N).txt ./$(BIN)
 	@echo "perf stats saved to $(PERF_DIR)/perf_N$(N).txt"
 
+# Loop over all programs and build
+all_build:
+	@for p in $(PROGS); do \
+		$(MAKE) PROG=$$p N=$(N) build; \
+	done
+
+# Loop over all programs and run once
+all_run: all_build
+	@for p in $(PROGS); do \
+		$(MAKE) PROG=$$p N=$(N) run; \
+	done
+
+# Loop over all programs and gprof
+all_gprof: all_build
+	@for p in $(PROGS); do \
+		$(MAKE) PROG=$$p N=$(N) gprof; \
+	done
+
+# Loop over all programs and perf
+all_perf: all_build
+	@for p in $(PROGS); do \
+		$(MAKE) PROG=$$p N=$(N) RUNS=$(RUNS) perf; \
+	done
+
+# Run all experiments_P1 across predefined problem sizes (part1)
+part1: clean
+	@set -e; \
+	for item in $(EXPERIMENTS_P1); do \
+		IFS=','; set -- $$item; \
+		prog=$$1; n=$$2; runs=$$3; tools=$$4; \
+		echo "=== Running $$prog N=$$n RUNS=$$runs TOOLS=$$tools ==="; \
+		$(MAKE) --no-print-directory PROG=$$prog N=$$n build; \
+		$(MAKE) --no-print-directory PROG=$$prog N=$$n run; \
+		if [ "$$tools" = "all" ] || [ "$$tools" = "gprof" ]; then \
+			$(MAKE) --no-print-directory PROG=$$prog N=$$n RUNS=$$runs gprof; \
+		fi; \
+		if [ "$$tools" = "all" ] || [ "$$tools" = "perf" ]; then \
+			$(MAKE) --no-print-directory PROG=$$prog N=$$n RUNS=$$runs perf; \
+		fi; \
+	done
+
 # Clean up generated files
 clean:
-	rm -rf $(BIN_DIR) gmon.out gprof_report_N*.txt .times.tmp
+	rm -rf $(BIN_DIR) gmon.out gprof_report_N*.txt .times.tmp $(RESULTS_DIR)/run
+
+.PHONY: build run gprof perf clean all_build all_run all_gprof all_perf part1
