@@ -26,6 +26,15 @@ EXPERIMENTS_P1 := \
 	matmul_int,2048,3,all \
 	matmul_int,4096,3,all
 
+# Experiment matrix for part3 (loop order permutations on N=4096)
+EXPERIMENTS_P3 := \
+	matmul_ijk,4096,3,all \
+	matmul_ikj,4096,3,all \
+	matmul_jik,4096,3,all \
+	matmul_jki,4096,3,all \
+	matmul_kij,4096,3,all \
+	matmul_kji,4096,3,all
+
 # List of all source files in src/ and derived program names
 SRC_FILES := $(wildcard $(SRC_DIR)/*.cpp)
 PROGS := $(patsubst $(SRC_DIR)/%.cpp,%,$(SRC_FILES))
@@ -125,8 +134,25 @@ part1: clean
 		fi; \
 	done
 
+# Run all experiments_P3 (part3: loop order permutations)
+part3: clean
+	@set -e; \
+	for item in $(EXPERIMENTS_P3); do \
+		IFS=','; set -- $$item; \
+		prog=$$1; n=$$2; runs=$$3; tools=$$4; \
+		echo "=== Running $$prog N=$$n RUNS=$$runs TOOLS=$$tools ==="; \
+		$(MAKE) --no-print-directory PROG=$$prog N=$$n build; \
+		$(MAKE) --no-print-directory PROG=$$prog N=$$n run; \
+		if [ "$$tools" = "all" ] || [ "$$tools" = "gprof" ]; then \
+			$(MAKE) --no-print-directory PROG=$$prog N=$$n RUNS=$$runs gprof; \
+		fi; \
+		if [ "$$tools" = "all" ] || [ "$$tools" = "perf" ]; then \
+			$(MAKE) --no-print-directory PROG=$$prog N=$$n RUNS=$$runs perf; \
+		fi; \
+	done
+
 # Clean up generated files
 clean:
 	rm -rf $(BIN_DIR) gmon.out gprof_report_N*.txt .times.tmp $(RESULTS_DIR)/run
 
-.PHONY: build run gprof perf clean all_build all_run all_gprof all_perf part1
+.PHONY: build run gprof perf clean all_build all_run all_gprof all_perf part1 part3
