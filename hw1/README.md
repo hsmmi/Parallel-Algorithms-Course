@@ -1,52 +1,117 @@
 # Homework 1
 
-## Getting Started with Profiling
+## Getting Started with Profiling (macOS setup, multi‑program)
 
-This assignment is a warm‑up in *measuring and reasoning about performance* for CPU‑bound kernels. You will implement a straightforward dense matrix multiplication (C := A×B) and use profiling tools to understand where time is spent and how changes to code and problem size affect performance.
+This assignment is a warm‑up in *measuring and reasoning about performance* for a CPU‑bound kernel (dense matrix multiply, `C := A × B`). You will build a baseline, automate runs, and collect timing and profiling data. The provided Makefile is **macOS‑only**, supports **multiple programs** (every `*.cpp` in this folder), builds **per‑N binaries**, and can **repeat runs and average** results.
+
+> On macOS we use **gperftools/pprof** instead of `gprof`, and the built‑in `sample` instead of Linux `perf`.
+
+---
 
 ### Objectives
-- Build a baseline \(O(N^3)\) matrix multiplication and a simple correctness check (e.g., checksum).
+- Build a baseline \(O(N^3)\) matrix multiplication with a simple correctness check (e.g., checksum).
 - Automate builds and runs with a Makefile; parameterize the problem size via `N` (e.g., 1024, 2048, 4096).
-- Collect wall‑clock time and basic profiles; interpret function‑level costs and (on Linux) hardware counters.
-- Make small, controlled changes (loop order, blocking/tiling, unrolling, data type) and compare results.
+- **Run each experiment ≥3 times and report the average.**
+- Collect profiles and interpret where time is spent; compare effects of loop order, tiling, unrolling, and data type.
 
-### Tools
-- **Linux (recommended):** `gprof` (compile with `-pg`) and `perf` (events like `cycles,instructions,cache-misses,L1-dcache-load-misses`).
-- **macOS / Apple Silicon (acceptable alternative):** use **gperftools/pprof** instead of `gprof`, and `sample`/Instruments for sampling instead of `perf`. If you use these, *note the substitution* clearly in your report.
+---
 
-### Repository Layout
-- `matmul.cpp` — baseline kernel and optional variants controlled via `#define`s.
-- `Makefile` — targets like `run`, `gprof` (and optional `perf`); writes logs into `results/`.
-- `results/` — profiling outputs (e.g., `gprof_N1024.txt`, `perf_N1024.txt`, `pprof_N1024.txt`).
+### Tools (macOS)
+- **Compiler:** Apple clang (`c++`).
+- **Profiler (gprof substitute):** **gperftools / pprof** — install once:
+  ```bash
+  brew install gperftools
+  ```
+- **Sampling profiler (perf substitute):** built‑in `sample` or Instruments.
 
-### Quick Start
-- Build & run (default optimization flags):
+---
+
+### Repository layout
+- Multiple single‑file programs: any `*.cpp` is treated as a separate program (e.g., `matmul.cpp`, `matrix_int.cpp`, `matrix_double.cpp`, …).
+- `Makefile` — multi‑program, **per‑N binaries**, and **averaging** targets:
+  - Single‑program targets (use `PROG=<name>`): `build`, `run`, `run_avg`, `profile`, `pprof`, `pprof_avg`, `sample`
+  - All‑program targets: `all_build`, `all_run`, `all_run_avg`, `all_pprof`, `all_pprof_avg`, `all_sample`
+- Results tree (tool‑separated, per‑program):
+  - `results/run/<prog>/` — timings & averages
+  - `results/gprof/<prog>/` — **pprof** reports (macOS substitute for gprof)
+  - `results/perf/<prog>/` — **sample** reports (macOS substitute for perf)
+
+> Binaries are named per size (e.g., `matrix_int_N1024`). macOS may create `*.dSYM/` bundles for symbols (safe to delete or keep for better profiles).
+
+---
+
+### Quick start — single program
+- List detected programs (from `*.cpp`):
   ```bash
-  make clean && make run N=1024
+  make list
   ```
-- **gprof on Linux:**
+- **Build & run once** (defaults: `PROG=matmul`, `N=1024`):
   ```bash
-  make gprof N=1024
-  # output saved under results/gprof_N1024.txt
+  make clean && make run PROG=matmul N=1024
   ```
-- **perf on Linux (after adding a PERF target):**
+- **Run 3× and compute the average** (default `RUNS=3`, configurable):
   ```bash
-  make perf N=1024
-  # collects cycles,instructions,cache-misses,L1-dcache-load-misses
+  make run_avg PROG=matrix_int N=1024            # results/run/matrix_int/avg_N1024.txt
+  make run_avg PROG=matrix_double N=2048 RUNS=5  # 5 repetitions
   ```
-- **pprof on macOS (gperftools substitute for gprof):**
+- **pprof: profile once** (requires gperftools):
   ```bash
-  CPUPROFILE=results/pprof_N1024 ./matmul
-  pprof --text ./matmul results/pprof_N1024 > results/pprof_N1024.txt
+  make pprof PROG=matrix_int N=1024              # results/gprof/matrix_int/pprof_N1024.txt
   ```
-- **Sampling on macOS (perf substitute):**
+- **pprof: run 3×, average and merge profiles**
   ```bash
-  sudo sample ./matmul 10 -file results/sample_N1024.txt
+  make pprof_avg PROG=matrix_double N=2048 RUNS=3  # avg + merged -> results/gprof/matrix_double/
   ```
+- **Sampling (perf‑like) for 10s**
+  ```bash
+  make sample PROG=matrix_int N=1024 SAMPLE_SECS=10  # results/perf/matrix_int/sample_N1024.txt
+  ```
+
+---
+
+### Run the whole suite (all programs)
+- Build everything for a given size:
+  ```bash
+  make all_build N=1024
+  ```
+- Run once for all programs:
+  ```bash
+  make all_run N=1024
+  ```
+- Average timings for all programs:
+  ```bash
+  make all_run_avg N=1024 RUNS=3
+  ```
+- pprof for all programs (once / averaged):
+  ```bash
+  make all_pprof N=1024
+  make all_pprof_avg N=1024 RUNS=3
+  ```
+- sample for all programs:
+  ```bash
+  make all_sample N=1024 SAMPLE_SECS=10
+  ```
+
+---
+
+### Notes on parameters & output parsing
+- `N` controls matrix size at **compile time** (binaries are named `<prog>_N$(N)`). Changing `N` builds a new binary.
+- `PROG` selects which program to run; default is `matmul`. Examples: `matrix_int`, `matrix_double`.
+- `RUNS` controls how many repetitions `run_avg`/`pprof_avg` perform.
+- Timing is parsed from the program’s line: `Execution time: <seconds> seconds`. Keep that exact format in each `*.cpp`.
+- Folder mapping mirrors the original Linux homework wording: `gprof/` (pprof on macOS) and `perf/` (macOS `sample`).
+
+---
 
 ### Deliverables
 - Source code and Makefile.
-- Profiling logs (gprof/pprof and perf/sample outputs) inside `results/`.
-- A short write‑up (≈1–3 pages) summarizing methodology, key metrics/tables/plots, and 2–3 insights about performance (e.g., effects of size, loop order, locality, and unrolling).
+- Logs/reports in `results/`, organized per tool and per program:
+  - `results/run/<prog>/avg_N*.txt` (averaged runtime) plus per‑run logs.
+  - `results/gprof/<prog>/pprof_N*.txt` (single run) and `.../avg_N*.txt` + merged profile.
+  - Optional `results/perf/<prog>/sample_N*.txt` snapshots.
+- A short write‑up (≈1–3 pages) that:
+  1. Describes methodology and automation.
+  2. Presents **averaged** results (≥3 runs) in clear tables/plots.
+  3. Explains key insights (effects of size N, loop order, locality from tiling, unrolling, data type).
 
-> **Grading emphasizes** reproducibility, clear methodology, and thoughtful analysis — not just raw speed.
+> **Grading emphasizes** reproducibility, averaged results, and thoughtful analysis — not just raw speed.

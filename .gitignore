@@ -208,3 +208,4 @@ __marimo__/
 
 # Mac Finder files
 .DS_Store
+*.dSYM/
