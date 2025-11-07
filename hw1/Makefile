@@ -5,6 +5,10 @@ CXXFLAGS = -O3 -funroll-loops -ffast-math -Wall -march=native
 # Directories
 SRC_DIR := src
 BIN_DIR := bin
+RESULTS_DIR := results
+GPROF_DIR   := $(RESULTS_DIR)/gprof/$(PROG)
+PERF_DIR    := $(RESULTS_DIR)/perf/$(PROG)
+RUN_DIR     := $(RESULTS_DIR)/run/$(PROG)
 
 # Program name (without .cpp extension)
 PROG ?= matmul_int
@@ -16,6 +20,12 @@ RUNS ?= 3
 # Ensure bin directory exists
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
+$(GPROF_DIR):
+	@mkdir -p $(GPROF_DIR)
+$(PERF_DIR):
+	@mkdir -p $(PERF_DIR)
+$(RUN_DIR):
+	@mkdir -p $(RUN_DIR)
 
 # Derived binary names (per N), now living in bin/
 BIN      := $(BIN_DIR)/$(PROG)_N$(N)
@@ -39,7 +49,7 @@ run: build
 	./$(BIN)
 
 # Run baseline RUNS times and average
-run_avg: build
+run_avg: build | $(RUN_DIR)
 	@rm -f .times.tmp
 	@i=1; while [ $$i -le $(RUNS) ]; do \
 		out=$$(./$(BIN)); \
@@ -48,18 +58,23 @@ run_avg: build
 		i=$$((i+1)); \
 	done; \
 	avg=$$(awk '{s+=$$1} END{printf \"%.6f\", s/NR}' .times.tmp); \
-	echo "Average execution time: $$avg seconds"
+	{ echo "PROG=$(PROG), N=$(N), RUNS=$(RUNS)"; \
+	  echo "Times:"; cat .times.tmp; \
+	  echo "Average: $$avg seconds"; } > $(RUN_DIR)/avg_N$(N).txt; \
+	echo "run_avg report saved to $(RUN_DIR)/avg_N$(N).txt"
 
 # Generate a gprof report
-prof: $(PROF_BIN)
+gprof: $(PROF_BIN) | $(GPROF_DIR)
 	@rm -f gmon.out
 	./$(PROF_BIN)
-	gprof $(PROF_BIN) gmon.out > gprof_report_N$(N).txt
-	@echo "gprof report saved to gprof_report_N$(N).txt"
+	gprof $(PROF_BIN) gmon.out > $(GPROF_DIR)/gprof_N$(N).txt
+	@echo "gprof report saved to $(GPROF_DIR)/gprof_N$(N).txt"
 
 # Perf metrics
-perf: $(BIN)
-	perf stat -e cycles,instructions,cache-misses,cache-references,L1-dcache-load-misses ./$(BIN)
+perf: $(BIN) | $(PERF_DIR)
+	sudo perf stat -e cycles,instructions,cache-misses,cache-references,L1-dcache-load-misses \
+		-o $(PERF_DIR)/perf_N$(N).txt ./$(BIN)
+	@echo "perf stats saved to $(PERF_DIR)/perf_N$(N).txt"
 
 # Clean up generated files
 clean:

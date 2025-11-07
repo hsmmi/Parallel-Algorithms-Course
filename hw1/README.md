@@ -12,7 +12,7 @@ This repo contains a simple CPU‑bound dense matrix multiplication kernel and s
 
 ## Environment Preparation
 
-Install a C++ toolchain with `g++`, `gprof` and `perf` (e.g. `sudo apt install build‑essential gprof linux‑tools‑common`).
+Install a C++ toolchain with `g++`, `gprof` and `perf` (e.g. `apt install build-essential binutils linux-tools-common linux-tools-$(uname -r)`).
 
 To compile and run the baseline code:
 
@@ -27,7 +27,7 @@ make run
 make run_avg RUNS=3
 
 # profile with gprof (writes gprof_report_N1024.txt)
-make prof
+make gprof
 
 # collect low‑level counters (cycles, instructions, cache misses)
 make perf
