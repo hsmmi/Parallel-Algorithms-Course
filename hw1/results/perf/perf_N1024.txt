@@ -1,0 +1,17 @@
+# started on Fri Nov  7 21:30:05 2025
+
+
+ Performance counter stats for './bin/matmul_int_N1024':
+
+       19775426168      cycles                                                      
+        1132067006      instructions              #    0.06  insn per cycle         
+          46559102      cache-misses              #   13.411 % of all cache refs    
+         347165065      cache-references                                            
+         640775434      L1-dcache-load-misses                                       
+
+       7.938134407 seconds time elapsed
+
+       7.852456000 seconds user
+       0.064080000 seconds sys
+
+

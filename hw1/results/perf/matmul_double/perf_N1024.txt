@@ -1,0 +1,13 @@
+# started on Fri Nov  7 22:56:47 2025
+
+
+ Performance counter stats for './bin/matmul_double_N1024' (3 runs):
+
+       21487506992      cycles                                                        ( +-  1.28% )
+        1680802088      instructions              #    0.08  insn per cycle           ( +-  0.11% )
+         103937526      cache-misses              #   21.330 % of all cache refs      ( +-  3.25% )
+         487291625      cache-references                                              ( +-  0.62% )
+         829401745      L1-dcache-load-misses                                         ( +-  0.21% )
+
+             8.260 +- 0.142 seconds time elapsed  ( +-  1.72% )
+
