@@ -1,2 +1,0 @@
-PROG=matmul_int, N=1024, RUNS=3
-Average execution time: 7.208187 seconds

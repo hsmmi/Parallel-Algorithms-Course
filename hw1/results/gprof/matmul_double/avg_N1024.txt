@@ -1,2 +1,0 @@
-PROG=matmul_double, N=1024, RUNS=3
-Average execution time: 7.980210 seconds
